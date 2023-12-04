@@ -166,6 +166,12 @@
             // this.saveAudio();
             // this.encodeVideo();
           });
+          document.body.addEventListener('touchstart', () => {
+            if (!this.initialized) {
+              this.initialized = true;
+              this.$video.load();
+            }
+          });
         }
 
         updateLoaded() {
