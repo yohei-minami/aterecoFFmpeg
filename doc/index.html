@@ -1,0 +1,337 @@
+<html>
+  <head>
+    <link rel="stylesheet" href="style.css" />
+    <link
+  rel="stylesheet"
+  href="https://unpkg.com/modern-css-reset/dist/reset.min.css"
+/>
+    <script src="/assets/ffmpeg/package/dist/umd/ffmpeg.js"></script>
+    <script src="/assets/util/package/dist/umd/index.js"></script>
+  </head>
+
+  <body>
+    <h3>FFmpeg アテレコテスト</h3>
+    <div class="">
+      <video id="video" src="./15s.mov" playsinline></video>
+      <button id="button" disabled>loading...</button>
+    </div>
+    <div class="resultArea" hidden>
+      <h3 class="">出力</h3>
+      <video id="result" src="" controls playsinline></video>
+      <a href="" id="download" download disabled>download</a>
+    </div>
+    <ul id="log">
+
+    </ul>
+
+
+    <script>
+      const { fetchFile, toBlobURL } = FFmpegUtil;
+      const { FFmpeg } = FFmpegWASM;
+
+      class App {
+        constructor() {
+          this.ffmpeg = new FFmpeg();
+          this.$video = document.querySelector("#video");
+          this.$resultVideo = document.querySelector("#result");
+          this.$button = document.querySelector("#button");
+          this.$download = document.querySelector("#download");
+          this.$log = document.querySelector('#log');
+          this.$resultArea = document.querySelector('.resultArea');
+
+          // for audio
+          this.audioSampleRate = null;
+          this.scriptProcessor = null;
+          this.audioContext = null;
+          this.audioData = [];
+          this.bufferSize = 1024;
+          this.audioHref = '';
+          this.isRecording = false;
+          this.hasRecorded = false;
+          this.isLoaded = {
+            ffmpeg: false,
+            video: false,
+          }
+          this.status = 'loading';
+
+          this.initializeFFMPEG();
+          this.bind();
+        }
+
+        log(message) {
+          const item = document.createElement('li');
+          item.innerHTML = message;
+          this.$log.append(item);
+          item.scrollIntoView({ behavior: 'smooth'});
+          console.log(message);
+        }
+
+        record() {
+          this.$video.load();
+          navigator.mediaDevices
+            .getUserMedia({ audio: true, video: false })
+            .then(stream => {
+              this.handleSuccess(stream);
+              this.hasRecorded = true;
+              this.$video.play();
+            });
+        }
+
+        async initializeFFMPEG() {
+          this.ffmpeg.on("log", ({ message }) => {
+            this.log(message);
+          });
+
+          await this.ffmpeg.load({
+            coreURL: "/assets/core/package/dist/umd/ffmpeg-core.js",
+            // coreURL: await toBlobURL(`/assets/core-mt/package/dist/umd/ffmpeg-core.js`, 'text/javascript'),
+            // wasmURL: await toBlobURL(`/assets/core-mt/package/dist/umd/ffmpeg-core.wasm`, 'application/wasm'),
+            // workerURL: await toBlobURL(`/assets/core-mt/package/dist/umd/ffmpeg-core.worker.js`, 'text/javascript'),
+          });
+
+          this.isLoaded.ffmpeg = true;
+          this.updateLoaded();
+        }
+
+        async encodeVideo() {
+          this.log("encodeVideo");
+
+          await this.ffmpeg.writeFile(
+            "input.mp4",
+            await fetchFile("/15s.mov")
+          );
+          await this.ffmpeg.writeFile(
+            "input.mp3",
+            await fetchFile(this.audioHref)
+          );
+          await this.ffmpeg.writeFile(
+            "list.txt",
+            await fetchFile("/list.txt")
+          );
+
+          this.log("exec started");
+
+          const ffmpegCommand = [
+            "-safe", "0",
+            "-f", "concat",
+            "-i", "list.txt",
+            "-i", "input.mp3",
+            "-filter_complex", "amix",
+            "-t", "10",
+            "output.mp4",
+          ];
+
+          this.log('ffmpeg ' + ffmpegCommand.join(" "));
+
+          // 音声合成
+          await this.ffmpeg.exec(ffmpegCommand);
+
+          this.log("command evecuted");
+
+          const data = await this.ffmpeg.readFile("output.mp4");
+
+          this.log("output.mp4 read");
+
+          this.$resultVideo.src = URL.createObjectURL(
+            new Blob([data.buffer], { type: "video/mp4" })
+          );
+
+          this.$download.href = this.$resultVideo.src;
+
+          this.$download.disabled = false;
+          this.$resultArea.hidden = false;
+        }
+
+        bind() {
+          this.$button.addEventListener("click", () => {
+            this.handleButtonClick();
+          });
+
+          this.$video.addEventListener("canplaythrough", () => {
+            this.log("video canplaythrough");
+            this.isLoaded.video = true;
+            this.updateLoaded();
+          });
+
+          this.$video.addEventListener("playing", () => {
+            this.log("video playing");
+            // syncronize audio and video
+            if (this.hasRecorded) {
+              this.hasRecorded = false;
+              this.isRecording = true;
+            }
+          });
+          this.$video.addEventListener("ended", () => {
+            this.log("video ended");
+            // this.saveAudio();
+            // this.encodeVideo();
+          });
+        }
+
+        updateLoaded() {
+          if (this.status === 'loading' && this.isLoaded.ffmpeg && this.isLoaded.video) {
+            this.$button.disabled = false;
+            this.$button.innerHTML = "Start";
+            this.status = 'loaded';
+          }
+        }
+
+        handleButtonClick() {
+          if (this.status === 'loaded') {
+            this.status = 'recording';
+            this.$button.disabled = true;
+            this.$button.innerHTML = "recording...";
+            this.startListeningVideo();
+            this.record();
+          }
+        }
+
+        startListeningVideo() {
+          let lastTime = 0;
+          const frame = () => {
+            if (this.status === 'recording') {
+              requestAnimationFrame(frame);
+            }
+            const currentTime = this.$video.currentTime;
+
+            if (lastTime < 1 && currentTime >= 1) {
+              this.log("1s");
+            }
+            if (lastTime < 2 && currentTime >= 2) {
+              this.log("2s [countdown 3]");
+            }
+            if (lastTime < 3 && currentTime >= 3) {
+              this.log("3s [countdown 2]");
+            }
+            if (lastTime < 4 && currentTime >= 4) {
+              this.log("4s [countdown 1]");
+            }
+            if (lastTime < 5 && currentTime >= 5) {
+              this.$video.muted = true;
+              this.log("5s  [recording start]");
+            }
+            if (lastTime < 6 && currentTime >= 6) {
+              this.log("6s");
+            }
+            if (lastTime < 7 && currentTime >= 7) {
+              this.log("7s");
+            }
+            if (lastTime < 8 && currentTime >= 8) {
+              this.$video.muted = false;
+              this.log("8s  [recording end]");
+            }
+            if (lastTime < 9 && currentTime >= 9) {
+              this.log("9s");
+            }
+            if (lastTime < 10 && currentTime >= 10) {
+              this.log("10s");
+              this.$video.pause();
+              this.status = 'encoding';
+              this.$button.innerHTML = "encoding...";
+              this.log("video ended");
+              this.saveAudio();
+              this.encodeVideo();
+            }
+
+            lastTime = currentTime;
+          }
+          requestAnimationFrame(frame);
+        }
+
+        saveAudio() {
+          this.audioHref = this.exportWAV(this.audioData);
+          // audioDownload.href = this.audioHref;
+          // audioDownload.download = "test.wav";
+
+          this.audioContext?.close().then(function () {
+          });
+        }
+
+        handleSuccess(stream) {
+          this.audioContext = new AudioContext();
+          this.audioSampleRate = this.audioContext.sampleRate;
+          const scriptProcessor = this.audioContext.createScriptProcessor(this.bufferSize, 1, 1);
+          const mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
+          mediaStreamSource.connect(scriptProcessor);
+          scriptProcessor.onaudioprocess = this.onAudioProcess.bind(this);
+          scriptProcessor.connect(this.audioContext.destination);
+        }
+
+        // save audio data
+        onAudioProcess(e) {
+          if (!this.isRecording) return;
+
+          const input = e.inputBuffer.getChannelData(0);
+          const bufferData = new Float32Array(this.bufferSize);
+          for (var i = 0; i < this.bufferSize; i++) {
+            // when video is unmuted, save audio data as 0
+            bufferData[i] = this.$video.muted ? input[i] : 0;
+          }
+          this.audioData.push(bufferData);
+        }
+
+        // export WAV from audio float data
+        exportWAV(audioData) {
+          const encodeWAV = (samples, sampleRate) => {
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+
+            let writeString = function (view, offset, string) {
+              for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+              }
+            };
+
+            let floatTo16BitPCM = function (output, offset, input) {
+              for (let i = 0; i < input.length; i++, offset += 2) {
+                let s = Math.max(-1, Math.min(1, input[i]));
+                output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+              }
+            };
+
+            writeString(view, 0, "RIFF"); // RIFFヘッダ
+            view.setUint32(4, 32 + samples.length * 2, true); // これ以降のファイルサイズ
+            writeString(view, 8, "WAVE"); // WAVEヘッダ
+            writeString(view, 12, "fmt "); // fmtチャンク
+            view.setUint32(16, 16, true); // fmtチャンクのバイト数
+            view.setUint16(20, 1, true); // フォーマットID
+            view.setUint16(22, 1, true); // チャンネル数
+            view.setUint32(24, sampleRate, true); // サンプリングレート
+            view.setUint32(28, sampleRate * 2, true); // データ速度
+            view.setUint16(32, 2, true); // ブロックサイズ
+            view.setUint16(34, 16, true); // サンプルあたりのビット数
+            writeString(view, 36, "data"); // dataチャンク
+            view.setUint32(40, samples.length * 2, true); // 波形データのバイト数
+            floatTo16BitPCM(view, 44, samples); // 波形データ
+
+            return view;
+          };
+
+          const mergeBuffers = (audioData) => {
+            let sampleLength = 0;
+            for (let i = 0; i < audioData.length; i++) {
+              sampleLength += audioData[i].length;
+            }
+            const samples = new Float32Array(sampleLength);
+            let sampleIdx = 0;
+            for (let i = 0; i < audioData.length; i++) {
+              for (let j = 0; j < audioData[i].length; j++) {
+                samples[sampleIdx] = audioData[i][j];
+                sampleIdx++;
+              }
+            }
+            return samples;
+          };
+
+          const dataview = encodeWAV(mergeBuffers(audioData), this.audioSampleRate);
+          const audioBlob = new Blob([dataview], { type: "audio/wav" });
+
+          const myURL = window.URL || window.webkitURL;
+          return myURL.createObjectURL(audioBlob);
+        }
+      }
+
+      new App();
+    </script>
+  </body>
+</html>
