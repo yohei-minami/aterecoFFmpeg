@@ -98,7 +98,7 @@
 
           await this.ffmpeg.writeFile(
             "input.mp4",
-            await fetchFile("/15s.mov")
+            await fetchFile("/aterecoFFmpeg/15s.mov")
           );
           await this.ffmpeg.writeFile(
             "input.mp3",
@@ -106,7 +106,7 @@
           );
           await this.ffmpeg.writeFile(
             "list.txt",
-            await fetchFile("/list.txt")
+            await fetchFile("/aterecoFFmpeg/list.txt")
           );
 
           this.log("exec started");
