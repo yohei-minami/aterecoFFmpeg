@@ -12,7 +12,7 @@
   <body>
     <h3>FFmpeg アテレコテスト</h3>
     <div class="">
-      <video id="video" src="./15s.mov" playsinline></video>
+      <video id="video" src="./15s.mp4" playsinline></video>
       <button id="button" disabled>loading...</button>
     </div>
     <div class="resultArea" hidden>
@@ -98,7 +98,7 @@
 
           await this.ffmpeg.writeFile(
             "input.mp4",
-            await fetchFile("/aterecoFFmpeg/15s.mov")
+            await fetchFile("/aterecoFFmpeg/15s.mp4")
           );
           await this.ffmpeg.writeFile(
             "input.mp3",
