@@ -62,7 +62,7 @@
           const item = document.createElement('li');
           item.innerHTML = message;
           this.$log.append(item);
-          item.scrollIntoView({ behavior: 'smooth'});
+          item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
           console.log(message);
         }
 
